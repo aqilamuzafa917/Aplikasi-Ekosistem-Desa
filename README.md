@@ -1,60 +1,169 @@
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-
-# Sistem Informasi Desa - API Surat
+# Sistem Informasi Desa - Backend API
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-API untuk pengelolaan dan pengajuan berbagai jenis surat administrasi desa. Sistem ini memungkinkan warga untuk mengajukan surat secara online dan administrator desa untuk mengelola pengajuan tersebut.
+Backend Laravel untuk layanan Sistem Informasi Desa: pengajuan surat administrasi, artikel, pengaduan, profil desa, data APBDesa, peta, dan indeks IDM. Mendukung rute publik dan panel admin berbasis token (Sanctum).
 
 ## Daftar Isi
 - [Fitur Utama](#fitur-utama)
-- [Endpoint API](#endpoint-api)
-- [Panduan Penggunaan](#panduan-penggunaan)
-  - [Membuat Pengajuan Surat](#1-membuat-pengajuan-surat-baru)
-  - [Contoh Data Pengajuan](#contoh-data-pengajuan-berdasarkan-jenis-surat)
-  - [Melihat Status Pengajuan](#6-melihat-daftar-surat-berdasarkan-nik-pemohon-publik)
-  - [Mengunduh Surat](#7-mengunduh-pdf-surat-publik)
-- [Operasi Admin](#operasi-admin)
-- [Persyaratan Sistem](#persyaratan-sistem)
+- [Arsitektur & Teknologi](#arsitektur--teknologi)
+- [Endpoint Utama](#endpoint-utama)
+- [Autentikasi Admin (Sanctum)](#autentikasi-admin-sanctum)
 - [Instalasi](#instalasi)
+- [Konfigurasi Lingkungan](#konfigurasi-lingkungan)
+- [Migrasi, Seed, dan Data Contoh](#migrasi-seed-dan-data-contoh)
+- [Menjalankan Aplikasi](#menjalankan-aplikasi)
+- [Contoh Request](#contoh-request)
+- [Pengujian](#pengujian)
 - [Kontribusi](#kontribusi)
 - [Lisensi](#lisensi)
 
 ## Fitur Utama
 
-- Pengajuan berbagai jenis surat (Kematian, Pindah, Kelahiran, Usaha, dll)
+- Pengajuan berbagai jenis surat (Kematian, Pindah, Kelahiran, Usaha, dst.)
 - Pelacakan status pengajuan berdasarkan NIK
 - Manajemen pengajuan surat oleh admin desa
 - Pembuatan dokumen PDF otomatis untuk surat yang disetujui
-- Validasi data sesuai jenis surat yang diajukan
+- Modul publik: Artikel, Profil Desa, APBDesa, Peta/POI, IDM, Chatbot
 
-## Endpoint API
+## Arsitektur & Teknologi
 
-| Method | Endpoint                   | Fungsi                               | Autentikasi |
-|--------|----------------------------|--------------------------------------|-------------|
-| POST   | `/api/surat`               | Membuat pengajuan surat baru         | Tidak       |
-| GET    | `/api/surat`               | Menampilkan daftar surat (Admin)     | Admin       |
-| GET    | `/api/surat/{id_surat}`    | Melihat detail surat (Admin)         | Admin       |
-| PUT    | `/api/surat/{id_surat}/status` | Memperbarui status surat         | Admin       |
-| DELETE | `/api/surat/{id_surat}`    | Menghapus pengajuan surat            | Admin       |
-| GET    | `/api/surat/nik/{nik}`     | Melihat daftar surat berdasarkan NIK | Tidak       |
-| GET    | `/api/surat/pdf/{id_surat}`| Mengunduh PDF surat                  | Tidak       |
+- Framework: Laravel 12, PHP ^8.2
+- Autentikasi Admin: Laravel Sanctum
+- PDF: barryvdh/laravel-dompdf
+- Basis data: SQLite (default), MySQL/PostgreSQL didukung
+- Testing: Pest/PHPUnit
 
-## Panduan Penggunaan
+## Endpoint Utama
 
-### 1. Membuat Pengajuan Surat Baru
+Catatan prefix: semua rute berada di bawah prefix dasar Laravel `api`. Contoh: `GET /api/publik/profil-desa`.
 
-**Endpoint:** `POST /api/surat`
+- Publik (tanpa autentikasi):
+  - Profil Desa: `GET /api/publik/profil-desa`, `GET /api/publik/profil-desa/{id}`
+  - Surat: `POST /api/publik/surat`, `GET /api/publik/surat/{nik}`, `GET /api/publik/surat-latest/{nik}`
+  - Surat PDF publik: `GET /api/publik/surat/{nik}/{id}/pdf`
+  - Artikel publik: `GET /api/publik/artikel`, `GET /api/publik/artikel-latest`, `GET /api/publik/artikel/{id}`, `POST /api/publik/artikel`
+  - Pengaduan publik: `POST /api/publik/pengaduan`
+  - APBDesa publik: `GET /api/publik/apbdesa`, `GET /api/publik/apbdesa/multi-tahun`, `GET /api/publik/apbdesa/statistik`, `GET /api/publik/apb-desa/pdf/{tahun?}`
+  - Peta/POI publik: `GET /api/publik/map`, `GET /api/publik/map/poi/all`
+  - IDM publik: `GET /api/publik/idm`, `GET /api/publik/idm/{tahun}`, `GET /api/publik/idm-stats`
+  - Lainnya: `POST /api/publik/chatbot/send`, `POST /api/publik/cek-nik-tanggal-lahir`, `GET /api/publik/penduduk/{nik}`
 
-**Field umum yang wajib diisi:**
-- `nik_pemohon` - NIK 16 digit yang terdaftar di database penduduk
-- `jenis_surat` - Jenis surat yang diajukan (lihat daftar di bawah)
-- `keperluan` - Tujuan pengajuan surat (maksimal 500 karakter)
-- `tanggal_request` - Tanggal pengajuan (opsional, format: YYYY-MM-DD)
-- `attachment_bukti_pendukung` - File pendukung opsional (jpg/jpeg/png/pdf, maks: 2MB)
+- Admin (wajib Bearer token Sanctum):
+  - Auth: `POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/user`, `GET /api/users`, `POST /api/users/{id}/revoke`, `POST /api/users/{id}/reactivate`
+  - Surat: `GET /api/surat`, `GET /api/surat/{id}`, `POST /api/surat`, `PUT /api/surat/{id}`, `PATCH /api/surat/{id}/status`, `DELETE /api/surat/{id}`, `PATCH /api/surat/{id}/restore`, `GET /api/surat/sampah`, `GET /api/surat/stats`, `GET /api/surat/{id}/pdf`
+  - Artikel: `GET /api/artikel`, `POST /api/artikel`, `GET /api/artikel/{id}`, `PUT /api/artikel/{id}`, `PATCH /api/artikel/{id}/status`, `DELETE /api/artikel/{id}`, `GET /api/artikel/stats`
+  - Pengaduan: `GET /api/pengaduan`, `GET /api/pengaduan/{pengaduan}`, `PATCH /api/pengaduan/{pengaduan}/status`, `DELETE /api/pengaduan/{pengaduan}`, `GET /api/pengaduan/stats`
+  - Profil Desa: `GET /api/profil-desa`, `POST /api/profil-desa`, `GET /api/profil-desa/{id}`, `PATCH /api/profil-desa/{id}`, `DELETE /api/profil-desa/{nama_desa}`
+  - Penduduk: `GET /api/penduduk`, `POST /api/penduduk`, `PUT /api/penduduk/{nik}`, `DELETE /api/penduduk/{nik}`, `GET /api/penduduk/cari`, `GET /api/penduduk/stats`
+  - APBDesa: pendapatan/belanja CRUD, ringkasan `GET /api/apbdesa`
+  - POI/Map: `POST /api/map/poi`, `PUT /api/map/poi/{potensi}`, `DELETE /api/map/poi/{potensi}`
+  - IDM: variabel/indikator CRUD, `POST /api/idm/{tahun}/recalculate`
 
-### Contoh Data Pengajuan Berdasarkan Jenis Surat
+Detail lengkap lihat `routes/api.php`.
+
+## Autentikasi Admin (Sanctum)
+
+1) Registrasi (setup awal admin): `POST /api/register`
+
+2) Login: `POST /api/login` → respons berisi token Sanctum
+
+3) Gunakan header: `Authorization: Bearer <token>` untuk semua rute admin
+
+## Instalasi
+
+1. Clone repositori:
+   ```bash
+   git clone https://github.com/aqilamuzafa917/Sistem-Informasi-Desa-Backend.git
+   cd Sistem-Informasi-Desa-Backend
+   ```
+
+2. Instal dependensi PHP:
+   ```bash
+   composer install
+   ```
+
+3. Salin file konfigurasi:
+   - Windows (PowerShell):
+     ```powershell
+     copy .env.example .env
+     ```
+   - macOS/Linux:
+     ```bash
+     cp .env.example .env
+     ```
+
+4. Konfigurasikan database di file `.env`
+   - Default proyek menyiapkan SQLite otomatis di `database/database.sqlite` via skrip Composer.
+   - Untuk SQLite: pastikan baris berikut aktif:
+     ```env
+     DB_CONNECTION=sqlite
+     DB_DATABASE=./database/database.sqlite
+     ```
+   - Untuk MySQL/PostgreSQL: sesuaikan kredensial `DB_*`.
+
+5. Generate key dan migrasi database:
+   ```bash
+   php artisan key:generate
+   php artisan migrate
+   ```
+
+## Konfigurasi Lingkungan
+
+Variabel penting pada `.env` (contoh umum):
+- App: `APP_NAME`, `APP_ENV`, `APP_KEY`, `APP_URL`, `APP_TIMEZONE=Asia/Jakarta`
+- Sanctum/Cors (bila ada frontend terpisah): `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, `CORS_ALLOWED_ORIGINS`
+- Mail (opsional): `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`
+- Storage: `FILESYSTEM_DISK=public`
+
+## Migrasi, Seed, dan Data Contoh
+
+1. Jalankan migrasi:
+   ```bash
+   php artisan migrate
+   ```
+2. Seed data contoh utama:
+   ```bash
+   php artisan db:seed
+   # atau jalankan per seeder:
+   php artisan db:seed --class=UserSeeder
+   php artisan db:seed --class=PendudukSeeder
+   php artisan db:seed --class=ArtikelSeeder
+   php artisan db:seed --class=PengaduanSeeder
+   php artisan db:seed --class=ProfilDesaSeeder
+   php artisan db:seed --class=TotalApbDesaSeeder
+   php artisan db:seed --class=RealisasiPendapatanSeeder
+   php artisan db:seed --class=RealisasiBelanjaSeeder
+   php artisan db:seed --class=VariabelIdmSeeder
+   php artisan db:seed --class=IndikatorIdmSeeder
+   ```
+
+Catatan: Validasi NIK mengacu pada tabel `penduduks`. Gunakan seeder untuk mendapatkan NIK valid saat mencoba endpoint publik surat.
+
+## Menjalankan Aplikasi
+
+- Opsi sederhana: `php artisan serve`
+- Mode pengembangan terpadu (server + queue + Vite, butuh Node.js):
+  ```bash
+  composer run dev
+  ```
+
+## Contoh Request
+
+### 1) Membuat Pengajuan Surat Baru (Publik)
+
+Endpoint: `POST /api/publik/surat`
+
+Field umum yang wajib diisi:
+- `nik_pemohon` (16 digit, terdaftar di `penduduks`)
+- `jenis_surat`
+- `keperluan`
+- `tanggal_request` (opsional, YYYY-MM-DD)
+- `attachment_bukti_pendukung` (opsional; jpg/jpeg/png/pdf, maks 2MB)
+
+Contoh payload berdasarkan jenis surat:
 
 #### SK_KEMATIAN
 ```json
@@ -175,105 +284,48 @@ API untuk pengelolaan dan pengajuan berbagai jenis surat administrasi desa. Sist
 }
 ```
 
-### 6. Melihat Daftar Surat Berdasarkan NIK Pemohon (Publik)
+### 2) Melihat Daftar Surat Berdasarkan NIK Pemohon (Publik)
 
-**Endpoint:** `GET /api/surat/nik/{nik}`
+Endpoint: `GET /api/publik/surat/{nik}`
 
 Warga dapat memeriksa status pengajuan surat mereka dengan menyediakan NIK.
 
-**Contoh URL:** `/api/surat/nik/3201xxxxxxxxxxxx`
+Contoh URL: `/api/publik/surat/3201xxxxxxxxxxxx`
 
-### 7. Mengunduh PDF Surat (Publik)
+### 3) Mengunduh PDF Surat (Publik)
 
-**Endpoint:** `GET /api/surat/pdf/{id_surat}`
+Endpoint: `GET /api/publik/surat/{nik}/{id}/pdf`
 
-Setelah surat disetujui, warga dapat mengunduh surat dalam format PDF.
+Setelah surat disetujui, warga dapat mengunduh PDF menggunakan kombinasi NIK pemohon dan ID surat.
 
-**Contoh URL:** `/api/surat/pdf/15`
+### 4) Login Admin dan Ambil Data Surat (Admin)
 
-## Operasi Admin
+```bash
+# Login
+curl -X POST http://localhost:8000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"password"}'
 
-### 2. Melihat Daftar Surat (Admin)
+# Gunakan token dari respons untuk mengambil daftar surat
+curl http://localhost:8000/api/surat \
+  -H "Authorization: Bearer <TOKEN>"
+```
 
-**Endpoint:** `GET /api/surat`
+## Pengujian
 
-Administrator dapat melihat semua pengajuan surat dengan dukungan pagination dan filtering.
-
-**Query Parameters:**
-- `status` - Filter berdasarkan status (`Pending`, `Approved`, `Rejected`)
-- `page` - Nomor halaman
-- `per_page` - Jumlah item per halaman
-
-### 3. Melihat Detail Surat (Admin)
-
-**Endpoint:** `GET /api/surat/{id_surat}`
-
-Administrator dapat melihat detail lengkap pengajuan surat.
-
-### 4. Memperbarui Status Surat (Admin)
-
-**Endpoint:** `PUT /api/surat/{id_surat}/status`
-
-Administrator dapat menyetujui atau menolak pengajuan surat dengan menambahkan catatan.
-
-**Contoh Request Body (JSON):**
-```json
-{
-    "status_surat": "Approved",
-    "catatan": "Data lengkap, silahkan ambil surat di kantor desa."
-}
+Jalankan seluruh test suite:
+```bash
+php artisan test
+# atau
+./vendor/bin/pest
 ```
 
 ## Persyaratan Sistem
 
-- PHP 8.0 atau lebih tinggi
+- PHP ^8.2
 - Laravel 12
-- Database MySQL/PostgreSQL/SQLite
 - Composer
-
-## Instalasi
-
-1. Clone repositori:
-   ```bash
-   git clone https://github.com/aqilamuzafa917/Sistem-Informasi-Desa-Backend.git
-   cd sistem-informasi-desa-api-surat
-   ```
-
-2. Instal dependensi:
-   ```bash
-   composer install
-   ```
-
-3. Salin file konfigurasi:
-   ```bash
-   cp .env.example .env
-   ```
-
-4. Konfigurasikan database di file `.env`
-
-5. Jalankan migrasi database:
-   ```bash
-   php artisan migrate
-   ```
-
-6. Jalankan server:
-   ```bash
-   php artisan serve
-   ```
-
-## Catatan Penting
-
-1. **Autentikasi**: Endpoint admin memerlukan token autentikasi (Bearer Token) di header `Authorization`.
-
-2. **NIK**: Semua NIK yang digunakan dalam request harus sudah terdaftar di tabel `penduduks`.
-
-3. **Format Data**:
-   - Format tanggal: `YYYY-MM-DD`
-   - Format waktu: `HH:MM` atau `HH:MM:SS`
-
-4. **Unggah File**: Untuk request yang menyertakan file, gunakan `Content-Type: multipart/form-data`.
-
-5. **Nomor Surat**: Nomor surat akan digenerate otomatis ketika status diubah menjadi `Approved`.
+- Database: SQLite (default), MySQL/PostgreSQL opsional
 
 ## Kontribusi
 
