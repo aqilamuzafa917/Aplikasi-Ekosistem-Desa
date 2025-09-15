@@ -35,6 +35,7 @@ Backend Laravel untuk layanan Sistem Informasi Desa: pengajuan surat administras
 - PDF: barryvdh/laravel-dompdf
 - Basis data: SQLite (default), MySQL/PostgreSQL didukung
 - Testing: Pest/PHPUnit
+- Frontend: lihat repo [sistem-informasi-desa-fr](https://github.com/IqbalInsanKurnia/sistem-informasi-desa-fr)
 
 ## Endpoint Utama
 
@@ -117,6 +118,79 @@ Variabel penting pada `.env` (contoh umum):
 - Sanctum/Cors (bila ada frontend terpisah): `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, `CORS_ALLOWED_ORIGINS`
 - Mail (opsional): `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`
 - Storage: `FILESYSTEM_DISK=public`
+
+### Konfigurasi Desa yang Fleksibel (`config/desa.php`)
+
+File `config/desa.php` menyimpan identitas dan preferensi tampilan desa (nama, alamat, kontak, website, logo, titik pusat peta, dsb). Nilai-nilai ini:
+
+- Dapat diubah dinamis via endpoint admin tanpa perlu deploy ulang.
+- Dipakai lintas modul (mis. PDF surat, profil desa, chatbot system prompt, peta) sehingga perubahan langsung tercermin di seluruh aplikasi.
+
+Endpoint terkait:
+
+- Publik: `GET /api/publik/desa-config`
+- Admin: `GET /api/desa-config`, `PUT /api/desa-config`
+
+Contoh payload `PUT /api/desa-config` (field opsional boleh dihilangkan):
+
+```json
+{
+  "kode": "BTJR-TMR",
+  "nama_kabupaten": "Kabupaten Bandung Barat",
+  "nama_kecamatan": "Batujajar",
+  "nama_desa": "Batujajar Timur",
+  "alamat_desa": "Jl. Raya Batujajar No.191 ...",
+  "kode_pos": "40561",
+  "nama_provinsi": "Jawa Barat",
+  "jabatan_kepala": "Kepala Desa",
+  "nama_kepala_desa": "Pak Rafi",
+  "jabatan_ttd": "Kepala Desa",
+  "nama_pejabat_ttd": "Pak Rafi",
+  "nip_pejabat_ttd": "19XXXXXXXXXXXXXX",
+  "sosial_media": "https://www.instagram.com/kecamatanbatujajarkbb",
+  "website_desa": "http://localhost:5173",
+  "email_desa": "info@batujajartimur.desa.id",
+  "telepon_desa": "(022) 68XXXXX",
+  "logo_desa": "https://cdn.digitaldesa.com/uploads/profil/300_bandungbarat.png",
+  "center_map": [-6.912986707035502, 107.5105222441776]
+}
+```
+
+Catatan teknis fleksibilitas:
+
+- Controller `DesaConfigController@updateConfig` memvalidasi dan menyimpan perubahan langsung ke file `config/desa.php`. Perubahan berlaku segera setelah request berhasil.
+- Bidang seperti `nip_pejabat_ttd`, `sosial_media`, `website_desa`, `email_desa`, `telepon_desa` bersifat opsional (nullable).
+- `center_map` adalah array `[lat, lng]` untuk memusatkan peta modul publik.
+
+### Chatbot Desa: Function Calling berbasis Gemini
+
+Chatbot publik (`POST /api/publik/chatbot/send`) menggunakan Gemini API dengan fitur function calling untuk mengakses data real-time dari sistem. System prompt chatbot akan otomatis menyisipkan konteks dari `config/desa.php` (nama desa, kontak, website, sosmed) sehingga respons selaras identitas desa.
+
+Konfigurasi `.env`:
+
+- `GEMINI_API_KEY=...` (wajib)
+- `GEMINI_API_KEY_BACKUP=...` (opsional; fallback otomatis bila key utama gagal)
+
+Fungsi yang dapat dipanggil AI (didefinisikan di `App\Http\Controllers\ChatbotController::$availableFunctions` dan dieksekusi melalui `executeFunctionCall`):
+
+- `get_surat_by_nik(nik: string)` → 3 surat terbaru pemohon
+- `get_artikel_list(kategori?: string)` → daftar artikel terbaru + rangkuman
+- `get_artikel_by_id(id: string)` → detail artikel
+- `get_laporan_apbdesa(tahun?: number)` → ringkasan APBDes tahun tertentu/terbaru
+- `get_statistik_penduduk()` → statistik demografi ringkas
+- `get_idm_data(tahun?: number)` → skor dan status IDM
+
+Cara menambah fungsi baru untuk chatbot:
+
+1) Tambahkan definisi di array `$availableFunctions` (nama, deskripsi, skema parameter).
+2) Tambahkan handler di `executeFunctionCall($functionName, $args)` untuk memanggil controller/metode yang tepat dan kembalikan `JsonResponse`.
+3) Jika perlu, perbarui system prompt di `getSystemInstruction()` agar AI tahu kapan harus memanggil fungsi baru tersebut.
+
+Alur eksekusi ringkas:
+
+- Chatbot memanggil Gemini dengan daftar fungsi yang tersedia.
+- Jika model meminta function call, backend mengeksekusi fungsi lokal, lalu memanggil Gemini lagi dengan `functionResponse` agar AI merangkum hasilnya menjadi jawaban akhir.
+- Semua percakapan dan error penting dicatat pada `chatbot_logs` melalui `ChatbotLog` model; admin dapat melihat statistik via endpoint admin.
 
 ## Migrasi, Seed, dan Data Contoh
 
